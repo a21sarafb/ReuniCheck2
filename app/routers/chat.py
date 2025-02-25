@@ -20,10 +20,10 @@ def start_chat(request: ChatStartRequest):
     if not user_response.data:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
 
-    user_id = user_response.data[0]["id_user"]
+    id_user = user_response.data[0]["id_user"]
 
     # Obtener reuniones asignadas al usuario
-    meetings_response = select_data("meetings", {"id_user": user_id})
+    meetings_response = select_data("meetings", {"id_user": id_user})
 
     if not meetings_response.data:
         raise HTTPException(status_code=404, detail="No tienes reuniones asignadas.")
@@ -33,7 +33,7 @@ def start_chat(request: ChatStartRequest):
     return {
         "message": "Reuniones disponibles",
         "meetings": meetings,  # la lista de reuniones
-        "user_id": user_id  #  user_id
+        "id_user": id_user  #  id_user
     }
 
 @router.post("/conversation")

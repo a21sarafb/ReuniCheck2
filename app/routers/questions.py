@@ -50,28 +50,28 @@ def create_meeting(meeting: MeetingCreate):
             print(f"⚠️ Usuario con email {email} no encontrado. Se omitirá.")
             continue
 
-        user_id = user_data_list[0]["id_user"]
+        id_user = user_data_list[0]["id_user"]
 
         # **Crear una reunión por cada usuario**
-        meeting_data = {"topic": meeting.topic, "state": True, "id_user": user_id}
+        meeting_data = {"topic": meeting.topic, "state": True, "id_user": id_user}
         meeting_response = insert_data("meetings", meeting_data)
 
         if hasattr(meeting_response, "error") and meeting_response.error:
             raise HTTPException(status_code=400, detail=str(meeting_response.error))
 
-        meeting_id = meeting_response.data[0]["id_meeting"] if meeting_response.data else None
-        if not meeting_id:
+        id_meeting = meeting_response.data[0]["id_meeting"] if meeting_response.data else None
+        if not id_meeting:
             raise HTTPException(status_code=500, detail="Error al obtener el ID de la reunión")
 
         assigned_meetings.append({
-            "id_meeting": meeting_id,
+            "id_meeting": id_meeting,
             "topic": meeting.topic,
             "email": email,
-            "id_user": user_id
+            "id_user": id_user
         })
 
         # **Generar preguntas con ChatGPT**
-        print(f"🔄 Generando preguntas para {email} en la reunión {meeting_id}...")
+        print(f"🔄 Generando preguntas para {email} en la reunión {id_meeting}...")
         gpt = GeneradorPreguntas(api_key=OPENAI_API_KEY)  # 📌 Pasamos el `api_key`
         preguntas = gpt.generar_preguntas(meeting.topic)
 
@@ -83,8 +83,8 @@ def create_meeting(meeting: MeetingCreate):
         print(f"✅ Guardando preguntas en la base de datos para {email}...")
         for pregunta in preguntas:
             insert_data("questions", {
-                "id_meeting": meeting_id,
-                "id_user": user_id,
+                "id_meeting": id_meeting,
+                "id_user": id_user,
                 "content": pregunta
             })
 

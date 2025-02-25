@@ -17,10 +17,10 @@ def start_analysis(user_email: str):
     if not user_response.data:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
 
-    user_id = user_response.data[0]["id_user"]
+    id_user = user_response.data[0]["id_user"]
 
     # Obtener reuniones abiertas asignadas al usuario
-    meetings_response = select_data("meetings", {"id_user": user_id, "state": True})
+    meetings_response = select_data("meetings", {"id_user": id_user, "state": True})
 
     if not meetings_response.data:
         raise HTTPException(status_code=404, detail="No tienes reuniones abiertas.")
@@ -36,12 +36,12 @@ def analyze_meeting_api(request: AnalysisRequest):
     y luego usa ChatGPT para evaluar si la reunión es necesaria.
     """
 
-    user_id = request.user_id
-    meeting_id = request.meeting_id
+    id_user = request.id_user
+    id_meeting = request.id_meeting
 
     # Obtener preguntas y respuestas de la reunión
-    questions_response = select_data("questions", {"id_meeting": meeting_id})
-    answers_response = select_data("answers", {"id_meeting": meeting_id})
+    questions_response = select_data("questions", {"id_meeting": id_meeting})
+    answers_response = select_data("answers", {"id_meeting": id_meeting})
 
     if not questions_response.data:
         raise HTTPException(status_code=400, detail="No hay preguntas para esta reunión.")
@@ -57,17 +57,17 @@ def analyze_meeting_api(request: AnalysisRequest):
 
     if missing_questions:
         missing_info = [
-            {"question": q["content"], "user_id": q["id_user"]} for q in missing_questions
+            {"question": q["content"], "id_user": q["id_user"]} for q in missing_questions
         ]
         return {"message": "Faltan preguntas por responder", "missing_questions": missing_info}
 
     # Obtener contexto de la reunión
-    meeting_context = get_meeting_analysis(meeting_id)
+    meeting_context = get_meeting_analysis(id_meeting)
     if not meeting_context:
         raise HTTPException(status_code=500, detail="No se pudo generar el contexto de la reunión.")
 
     # 🔍 Enviar a GPT-4 para análisis
-    analysis_result = analyze_meeting(meeting_context, meeting_id)
+    analysis_result = analyze_meeting(meeting_context, id_meeting)
 
     return AnalysisResponse(
         message="Análisis completado",

@@ -7,8 +7,8 @@ API_BASE_URL = "http://127.0.0.1:8000"
 # Estado de sesión para mantener el usuario y la conversación
 if "user_email" not in st.session_state:
     st.session_state.user_email = None
-if "meeting_id" not in st.session_state:
-    st.session_state.meeting_id = None
+if "id_meeting" not in st.session_state:
+    st.session_state.id_meeting = None
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -25,7 +25,7 @@ if st.session_state.user_email is None:
             data = response.json()
             st.write(data)  # Muestra el contenido del diccionario
             st.session_state.user_email = email_input
-            st.session_state.user_id = data["user_id"]
+            st.session_state.id_user = data["id_user"]
 
         else:
             st.error("⚠️ Usuario no encontrado. Verifica tu correo.")
@@ -41,21 +41,21 @@ if st.session_state.user_email:
 
         selected_meeting = st.selectbox("Selecciona una reunión", list(meeting_options.keys()))
         if st.button("Continuar con la reunión"):
-            st.session_state.meeting_id = meeting_options[selected_meeting]
+            st.session_state.id_meeting = meeting_options[selected_meeting]
 
     else:
         st.error("⚠️ No tienes reuniones asignadas.")
 
 # Si hay una reunión seleccionada, iniciar el chat
-if st.session_state.meeting_id:
+if st.session_state.id_meeting:
     st.subheader("Preguntas de la Reunión")
 
     # 1. Llamamos al endpoint /questions/pending para obtener la lista de preguntas
     pending_resp = requests.post(
         f"{API_BASE_URL}/questions/pending",
         json={
-            "id_user": st.session_state.user_id,
-            "id_meeting": st.session_state.meeting_id
+            "id_user": st.session_state.id_user,
+            "id_meeting": st.session_state.id_meeting
         }
     )
 
@@ -83,8 +83,8 @@ if st.session_state.meeting_id:
                     if user_answer:
                         answer_data = {
                             "id_question": question["id_question"],
-                            "id_user": st.session_state.user_id,
-                            "id_meeting": st.session_state.meeting_id,
+                            "id_user": st.session_state.id_user,
+                            "id_meeting": st.session_state.id_meeting,
                             "content": user_answer
                         }
                         st.write("Enviando a /answers/create:", answer_data)  # <--- Depuración
@@ -113,8 +113,8 @@ if st.session_state.meeting_id:
                     st.markdown(user_input)
                 # Llamar al endpoint /chat/conversation de FastAPI
                 payload = {
-                    "user_id": st.session_state.user_id,  # string (UUID del usuario)
-                    "meeting_id": st.session_state.meeting_id,  # string (UUID de la reunión)
+                    "id_user": st.session_state.id_user,  # string (UUID del usuario)
+                    "id_meeting": st.session_state.id_meeting,  # string (UUID de la reunión)
                     "user_response": user_input
                 }
                 response = requests.post(f"{API_BASE_URL}/chat/conversation", json=payload)
@@ -139,7 +139,7 @@ if "analysis_requested" in st.session_state and st.session_state.analysis_reques
 
     analysis_response = requests.post(
         f"{API_BASE_URL}/analysis/analyze",
-        json={"id_user": st.session_state.user_id, "id_meeting": st.session_state.meeting_id}
+        json={"id_user": st.session_state.id_user, "id_meeting": st.session_state.id_meeting}
     )
 
     if analysis_response.status_code == 200:
