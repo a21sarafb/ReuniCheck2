@@ -99,3 +99,22 @@ def chat_with_bot(request: ChatRequest):
         message="Conversación en curso",
         ai_response=ai_response.content
     )
+@router.post("/context")
+def get_chat_context(id_user: str, id_meeting: str):
+    """
+    Devuelve todas las preguntas y respuestas de la reunión para que GPT tenga contexto.
+    """
+    # Obtener preguntas y respuestas de la DB
+    questions = select_data("questions", {"id_meeting": id_meeting, "id_user": id_user}).data
+    answers   = select_data("answers",   {"id_meeting": id_meeting, "id_user": id_user}).data
+
+    q_dict = {q["id_question"]: q["content"] for q in questions}
+    # Armar lista de pares (pregunta -> respuesta)
+    pairs = []
+    for ans in answers:
+        qid = ans["id_question"]
+        question_text = q_dict[qid] if qid else "ChatGPT Pregunta espontánea"
+        answer_text = ans["content"]
+        pairs.append({"question": question_text, "answer": answer_text})
+
+    return {"pairs": pairs}
