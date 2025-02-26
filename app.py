@@ -215,7 +215,7 @@ else:  # Obtener análisis
                 selected_analysis = st.selectbox("Selecciona reunión completada", list(completed_topics.keys()))
                 if st.button("Analizar reunión"):
                     meeting_to_analyze = completed_topics[selected_analysis]
-                    # 4) Llamar al endpoint /analysis/analyze (ajusta según tu implementación)
+                    # 4) Llamar al endpoint /analysis/analyze 
                     payload = {
                         "id_user": user_id,
                         "id_meeting": meeting_to_analyze
