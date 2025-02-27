@@ -3,7 +3,7 @@ import requests
 
 API_BASE_URL = "http://127.0.0.1:8000"
 
-# --- Estado de sesión ---
+# Estado de sesión
 if "user_email" not in st.session_state:
     st.session_state.user_email = None
 if "id_user" not in st.session_state:
@@ -13,73 +13,63 @@ if "id_meeting" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-st.title("🔵 ReuniCheck - Optimización de Reuniones")
+st.set_page_config(page_title="ReuniCheck", page_icon="🔵", layout="wide")
 
-# --- Navegación principal ---
-option = st.radio(
-    "¿Qué deseas hacer?",
-    ("Crear usuario", "Crear reunión", "Contestar preguntas", "Obtener análisis")
-)
+st.markdown("<h1 style='text-align: center;'>🔵 ReuniCheck - Optimización de Reuniones</h1>", unsafe_allow_html=True)
+st.markdown("---")
+
+# navegación con pestañas
+tab1, tab2, tab3, tab4 = st.tabs(["👤 Crear Usuario", "📅 Crear Reunión", "❓ Contestar Preguntas", "📊 Obtener Análisis"])
 
 # =========================================================
-# Opción 1: Crear usuario
+# 🟢 Opción 1: Crear usuario
 # =========================================================
-if option == "Crear usuario":
-    st.subheader("👤 Crear Usuario")
-    name_input = st.text_input("Nombre completo")
-    email_input = st.text_input("Correo electrónico")
+with tab1:
+    st.markdown("## 👤 Crear Usuario")
+    st.write("Registra un nuevo usuario para participar en reuniones.")
 
-    if st.button("Crear Usuario"):
+    name_input = st.text_input("Nombre completo", key="name_user")
+    email_input = st.text_input("Correo electrónico", key="email_user")
+
+    if st.button("Crear Usuario", use_container_width=True):
         payload = {"name": name_input, "email": email_input}
         response = requests.post(f"{API_BASE_URL}/questions/users/", json=payload)
         if response.status_code == 200:
-            st.success("✅ Usuario creado exitosamente.")
+            st.toast("✅  Usuario creado exitosamente.")
             st.session_state.user_email = email_input
         else:
             st.error("⚠️ No se pudo crear el usuario. Intenta de nuevo.")
 
 # =========================================================
-# Opción 2: Crear reunión
+# 🔵 Opción 2: Crear reunión
 # =========================================================
-elif option == "Crear reunión":
-    st.subheader("📅 Crear Reunión")
-    st.write("Bienvenido al asistente para crear nuevas reuniones en ReuniCheck.")
+with tab2:
+    st.markdown("## 📅 Crear Reunión")
+    st.write("Selecciona el tema y los participantes para generar una nueva reunión.")
 
-
-    # 1) Cargar lista de usuarios (sus correos) desde la API automáticamente al inicio
-    @st.cache_data  # Cacheamos la respuesta para evitar múltiples llamadas innecesarias
+    # Cargar lista de usuarios automáticamente
+    @st.cache_data
     def load_users():
         users_resp = requests.get(f"{API_BASE_URL}/questions/all_users")
-        if users_resp.status_code == 200:
-            data = users_resp.json()
-            return data.get("users", [])  # Retorna lista de usuarios si hay datos
-        else:
-            st.error("No se pudieron cargar los usuarios.")
-            return []
+        return users_resp.json().get("users", []) if users_resp.status_code == 200 else []
 
-
-    all_users = load_users()  # Cargamos usuarios al inicio
-
-    # 2) Si ya tienes la lista, ofrece un multiselect
-    email_options = [u["email"] for u in all_users] if all_users else []
+    all_users = load_users()
+    email_options = [u["email"] for u in all_users]
 
     with st.form("create_meeting_form"):
-        st.caption("Completa la siguiente información para generar automáticamente las preguntas.")
         col1, col2 = st.columns(2)
         with col1:
             topic_input = st.text_input("Tema de la reunión", help="Ej: Revisión de hitos del proyecto X")
         with col2:
-            # MultiSelect de correos con los usuarios cargados al inicio
             selected_emails = st.multiselect("Participantes", options=email_options, default=[])
 
         st.markdown("---")
-        create_button = st.form_submit_button("Crear Reunión")
+        create_button = st.form_submit_button("📌 Crear Reunión")
 
     if create_button:
-        # Normalizamos correos a minúsculas para evitar problemas con la DB
         normalized_emails = [email.strip().lower() for email in selected_emails]
-
         payload = {"topic": topic_input.strip(), "users": normalized_emails}
+
         with st.spinner("Creando reunión..."):
             response = requests.post(f"{API_BASE_URL}/questions/meetings/", json=payload)
 
@@ -90,29 +80,24 @@ elif option == "Crear reunión":
                 st.error(f"⚠️ Error al crear la reunión (código {response.status_code}).")
                 st.write("Respuesta del servidor:", response.text)
 
-
-
 # =========================================================
-# Opción 3: Contestar preguntas
+# ❓ Opción 3: Contestar preguntas
 # =========================================================
-elif option == "Contestar preguntas":
-    st.title("🔵 ReuniCheck - Chat Inteligente para Optimizar Reuniones")
+with tab3:
+    st.markdown("## ❓ Contestar Preguntas")
+    st.write("Responde a las preguntas de una reunión en la que participas.")
 
     if st.session_state.user_email is None:
-        st.subheader("🔑 Inicia sesión con tu correo")
-        email_input = st.text_input("Correo electrónico")
-
-        if st.button("Iniciar sesión"):
+        email_input = st.text_input("Correo electrónico", key="email_login")
+        if st.button("Iniciar sesión", use_container_width=True):
             response = requests.post(f"{API_BASE_URL}/chat/start", json={"user_email": email_input})
             if response.status_code == 200:
                 data = response.json()
-                st.write(data)
                 st.session_state.user_email = str(email_input)
                 st.session_state.id_user = str(data["id_user"])
             else:
                 st.error("⚠️ Usuario no encontrado. Verifica tu correo.")
 
-    # Mostrar reuniones disponibles
     if st.session_state.user_email:
         st.subheader(f"📅 Reuniones disponibles para {st.session_state.user_email}")
         response = requests.post(f"{API_BASE_URL}/chat/start", json={"user_email": st.session_state.user_email})
@@ -122,14 +107,13 @@ elif option == "Contestar preguntas":
             if meetings:
                 meeting_options = {m["topic"]: m["id_meeting"] for m in meetings}
                 selected_meeting = st.selectbox("Selecciona una reunión", list(meeting_options.keys()))
-                if st.button("Continuar con la reunión"):
+                if st.button("Continuar con la reunión", use_container_width=True):
                     st.session_state.id_meeting = str(meeting_options[selected_meeting])
             else:
                 st.info("🔹 No tienes reuniones asignadas.")
         else:
             st.error("⚠️ No se pudieron recuperar las reuniones.")
 
-    # Si hay una reunión seleccionada, iniciar el chat / preguntas pendientes
     if st.session_state.id_meeting:
         st.subheader("Preguntas de la Reunión")
         pending_resp = requests.post(
@@ -192,10 +176,11 @@ elif option == "Contestar preguntas":
         else:
             st.error("Error al obtener preguntas pendientes.")
 
+
 # =========================================================
-# Opción 4: Obtener análisis
+# 📊 Opción 4: Obtener análisis
 # =========================================================
-else:  # Obtener análisis
+with tab4:
     st.subheader("📊 Análisis de Reuniones")
     st.write("Ingresa el correo del usuario y selecciona una reunión completada para ver la evaluación final.")
 
@@ -230,7 +215,7 @@ else:  # Obtener análisis
                 # 3) Seleccionar la reunión para analizar
                 completed_topics = {c["topic"]: c["id_meeting"] for c in completed_meetings}
                 selected_analysis = st.selectbox("Selecciona reunión completada", list(completed_topics.keys()))
-                if st.button("Analizar reunión"):
+                if st.button("📊 Analizar reunión"):
                     meeting_to_analyze = completed_topics[selected_analysis]
                     # 4) Llamar al endpoint
                     payload = {
@@ -241,14 +226,12 @@ else:  # Obtener análisis
                     if analysis_resp.status_code == 200:
                         result_data = analysis_resp.json()
                         # 5) Mostrar resultado
-                        st.markdown(f"### Resultado del análisis\n**Conclusiones:** {result_data['conclusions']}")
-                        st.markdown(
-                            f"**¿Hace falta la reunión?** {'✅ Sí' if result_data['is_meeting_needed'] else '❌ No'}"
-                        )
+                        st.markdown(f"### 🔍 Resultado del análisis")
+                        st.markdown(f"**📌 Conclusiones:** {result_data['conclusions']}")
+                        st.markdown(f"**📢 ¿Hace falta la reunión?** {'✅ Sí' if result_data['is_meeting_needed'] else '❌ No'}")
                     else:
                         st.error("No se pudo obtener el análisis de la reunión.")
             else:
                 st.info("No hay reuniones completadas para este usuario.")
     else:
         st.info("Ingrese un correo y presione 'Buscar reuniones completadas'.")
-
