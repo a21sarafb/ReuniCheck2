@@ -44,36 +44,53 @@ if option == "Crear usuario":
 elif option == "Crear reunión":
     st.subheader("📅 Crear Reunión")
     st.write("Bienvenido al asistente para crear nuevas reuniones en ReuniCheck.")
+
+
+    # 1) Cargar lista de usuarios (sus correos) desde la API automáticamente al inicio
+    @st.cache_data  # Cacheamos la respuesta para evitar múltiples llamadas innecesarias
+    def load_users():
+        users_resp = requests.get(f"{API_BASE_URL}/questions/all_users")
+        if users_resp.status_code == 200:
+            data = users_resp.json()
+            return data.get("users", [])  # Retorna lista de usuarios si hay datos
+        else:
+            st.error("No se pudieron cargar los usuarios.")
+            return []
+
+
+    all_users = load_users()  # Cargamos usuarios al inicio
+
+    # 2) Si ya tienes la lista, ofrece un multiselect
+    email_options = [u["email"] for u in all_users] if all_users else []
+
     with st.form("create_meeting_form"):
         st.caption("Completa la siguiente información para generar automáticamente las preguntas.")
-
         col1, col2 = st.columns(2)
         with col1:
             topic_input = st.text_input("Tema de la reunión", help="Ej: Revisión de hitos del proyecto X")
         with col2:
-            st.write("Participantes")
-            participants_input = st.text_area(
-                "Ingresa los correos, uno por línea o separados por comas.",
-                help="Ej: user1@empresa.com, user2@empresa.com"
-            )
+            # MultiSelect de correos con los usuarios cargados al inicio
+            selected_emails = st.multiselect("Participantes", options=email_options, default=[])
+
         st.markdown("---")
         create_button = st.form_submit_button("Crear Reunión")
 
     if create_button:
-        emails = []
-        if "," in participants_input:
-            emails = [email.strip() for email in participants_input.split(",")]
-        else:
-            emails = [line.strip() for line in participants_input.splitlines()]
+        # Normalizamos correos a minúsculas para evitar problemas con la DB
+        normalized_emails = [email.strip().lower() for email in selected_emails]
 
-        payload = {"topic": topic_input, "users": emails}
+        payload = {"topic": topic_input.strip(), "users": normalized_emails}
         with st.spinner("Creando reunión..."):
             response = requests.post(f"{API_BASE_URL}/questions/meetings/", json=payload)
+
             if response.status_code == 200:
                 st.success("✅ Reunión creada y preguntas generadas exitosamente.")
                 st.balloons()
             else:
-                st.error("⚠️ Error al crear la reunión. Por favor, revisa los datos.")
+                st.error(f"⚠️ Error al crear la reunión (código {response.status_code}).")
+                st.write("Respuesta del servidor:", response.text)
+
+
 
 # =========================================================
 # Opción 3: Contestar preguntas
@@ -215,7 +232,7 @@ else:  # Obtener análisis
                 selected_analysis = st.selectbox("Selecciona reunión completada", list(completed_topics.keys()))
                 if st.button("Analizar reunión"):
                     meeting_to_analyze = completed_topics[selected_analysis]
-                    # 4) Llamar al endpoint /analysis/analyze 
+                    # 4) Llamar al endpoint
                     payload = {
                         "id_user": user_id,
                         "id_meeting": meeting_to_analyze

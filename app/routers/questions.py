@@ -11,6 +11,7 @@ router = APIRouter(prefix="/questions", tags=["Questions"])
 @router.post("/")
 def generate_questions(request: QuestionCreate):
     generator = QuestionGenerator()
+
     result = generator.create_questions(request)
     if not result:
         raise HTTPException(status_code=400, detail="No se pudieron generar preguntas")
@@ -29,6 +30,12 @@ def create_new_user(user: UserCreate):  # 📌 Se usa `UserCreate` para recibir 
         "message": "Usuario creado exitosamente",
         "user": user_data
     }
+@router.get("/all_users")
+def get_all_users():
+    resp = select_data("user")  # obtén todos los usuarios
+    if not resp.data:
+        return {"users": []}
+    return {"users": resp.data}  # donde cada elemento tiene "email", "id_user", etc.
 
 @router.post("/meetings/")
 def create_meeting(meeting: MeetingCreate):
@@ -40,25 +47,30 @@ def create_meeting(meeting: MeetingCreate):
     assigned_meetings = []  # Lista para guardar reuniones creadas
 
     for email in meeting.users:
+        print(f"Intentando crear reunión para: {email}") #debug
         # Buscar usuario por email
         user_response = select_data("user", {"email": email})
 
         # Verificar si la respuesta tiene `data`
-        user_data_list = user_response.data if hasattr(user_response, "data") else []
+        user_data_list = user_response.data if (user_response and user_response.data) else []
 
         if not user_data_list:
             print(f"⚠️ Usuario con email {email} no encontrado. Se omitirá.")
             continue
 
         id_user = user_data_list[0]["id_user"]
-
+        print(f"   - id_user: {id_user}") #debug
         # **Crear una reunión por cada usuario**
         meeting_data = {"topic": meeting.topic, "state": True, "id_user": id_user}
         meeting_response = insert_data("meetings", meeting_data)
-
+        # Revisa si hay error
         if hasattr(meeting_response, "error") and meeting_response.error:
+            print("⚠️ Error al insertar meeting:", meeting_response.error)
             raise HTTPException(status_code=400, detail=str(meeting_response.error))
-
+        # Verifica si se creó efectivamente
+        if not meeting_response.data or not meeting_response.data[0].get("id_meeting"):
+            print("⚠️ No se devolvió id_meeting al insertar.")
+            raise HTTPException(status_code=500, detail="Error al obtener el ID de la reunión")
         id_meeting = meeting_response.data[0]["id_meeting"] if meeting_response.data else None
         if not id_meeting:
             raise HTTPException(status_code=500, detail="Error al obtener el ID de la reunión")
