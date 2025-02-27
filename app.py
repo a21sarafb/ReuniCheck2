@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import json
 
 API_BASE_URL = "http://127.0.0.1:8000"
 
@@ -176,62 +177,87 @@ with tab3:
         else:
             st.error("Error al obtener preguntas pendientes.")
 
-
 # =========================================================
-# 📊 Opción 4: Obtener análisis
+# 📊 Pestaña 4: Obtener análisis
 # =========================================================
 with tab4:
-    st.subheader("📊 Análisis de Reuniones")
-    st.write("Ingresa el correo del usuario y selecciona una reunión completada para ver la evaluación final.")
+    st.markdown("## 📊 Análisis de Reuniones")
+    st.write("Ingresa un correo y selecciona una reunión para ver su análisis.")
 
-    user_email_analysis = st.text_input("Correo electrónico para análisis")
+    user_email_analysis = st.text_input("Correo electrónico para análisis", key="email_analysis")
 
-    if st.button("Buscar reuniones completadas"):
-        # 1) Llamar a /chat/start para obtener las reuniones del usuario
+    if st.button("🔍 Buscar reuniones completadas", use_container_width=True):
         resp = requests.post(f"{API_BASE_URL}/chat/start", json={"user_email": user_email_analysis})
         if resp.status_code != 200:
             st.error("No se pudo recuperar información de usuario. Revisa el correo.")
         else:
             data = resp.json()
-            user_id = data["id_user"]
+            st.session_state.user_id = data["id_user"]  # Guardar user_id en sesión
             all_meetings = data["meetings"]
 
-            # 2) Filtrar sólo las reuniones completadas (todas sus preguntas respondidas)
-            completed_meetings = []
-            for m in all_meetings:
-                meet_id = str(m["id_meeting"])
-                pending = requests.post(
+            # Filtrar reuniones con todas las preguntas respondidas
+            completed_meetings = [
+                m for m in all_meetings if all(q["answered"] for q in requests.post(
                     f"{API_BASE_URL}/questions/pending",
-                    json={"id_user": user_id, "id_meeting": meet_id}
-                )
-                if pending.status_code == 200:
-                    questions_info = pending.json()["questions"]
-                    # Si no hay unanswered => completada
-                    if all(q["answered"] for q in questions_info):
-                        completed_meetings.append(m)
+                    json={"id_user": st.session_state.user_id, "id_meeting": str(m["id_meeting"])}
+                ).json().get("questions", []))
+            ]
 
             if completed_meetings:
                 st.success(f"Se encontraron {len(completed_meetings)} reuniones completadas.")
-                # 3) Seleccionar la reunión para analizar
                 completed_topics = {c["topic"]: c["id_meeting"] for c in completed_meetings}
-                selected_analysis = st.selectbox("Selecciona reunión completada", list(completed_topics.keys()))
-                if st.button("📊 Analizar reunión"):
-                    meeting_to_analyze = completed_topics[selected_analysis]
-                    # 4) Llamar al endpoint
-                    payload = {
-                        "id_user": user_id,
-                        "id_meeting": meeting_to_analyze
-                    }
-                    analysis_resp = requests.post(f"{API_BASE_URL}/analysis/analyze", json=payload)
-                    if analysis_resp.status_code == 200:
-                        result_data = analysis_resp.json()
-                        # 5) Mostrar resultado
-                        st.markdown(f"### 🔍 Resultado del análisis")
-                        st.markdown(f"**📌 Conclusiones:** {result_data['conclusions']}")
-                        st.markdown(f"**📢 ¿Hace falta la reunión?** {'✅ Sí' if result_data['is_meeting_needed'] else '❌ No'}")
-                    else:
-                        st.error("No se pudo obtener el análisis de la reunión.")
+
+                # Inicializar variable de sesión si no existe
+                if "selected_meeting" not in st.session_state:
+                    st.session_state.selected_meeting = list(completed_topics.values())[0]
+
+                # Mostrar selectbox con la reunión seleccionada
+                selected_analysis = st.selectbox(
+                    "Selecciona reunión completada",
+                    list(completed_topics.keys()),
+                    index=list(completed_topics.values()).index(st.session_state.selected_meeting),
+                    key="selected_meeting_box"
+                )
+
+                # Guardar la reunión seleccionada en sesión si cambia
+                if selected_analysis and st.session_state.selected_meeting != completed_topics[selected_analysis]:
+                    st.session_state.selected_meeting = completed_topics[selected_analysis]
+
+    # Si hay una reunión seleccionada, mostrar análisis
+    if "selected_meeting" in st.session_state and st.session_state.selected_meeting:
+        meeting_to_analyze = st.session_state.selected_meeting
+        st.write(f"📌 **Reunión seleccionada:** {meeting_to_analyze}")
+
+        if st.button("📊 Analizar reunión", use_container_width=True):
+            with st.spinner("🔄 Procesando análisis, por favor espera..."):
+                payload = {"id_user": st.session_state.user_id, "id_meeting": meeting_to_analyze}
+                analysis_resp = requests.post(f"{API_BASE_URL}/analysis/analyze", json=payload)
+
+            if analysis_resp.status_code == 200:
+                result_data = analysis_resp.json()
+                st.markdown("### 🔍 Resultado del análisis")
+                if result_data['is_meeting_needed']:
+                    st.markdown(
+                        """
+                        <div style='padding: 20px; border-radius: 10px; background-color: #ffdddd; text-align: center;'>
+                            <h2 style='color: #b22222;'>🚨 ¡Esta reunión es necesaria! 🚨</h2>
+                            <p style='color: #800000; font-size: 18px;'>Se recomienda proceder con la reunión ya que se han detectado puntos críticos que requieren discusión en equipo.</p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown(
+                        """
+                        <div style='padding: 20px; border-radius: 10px; background-color: #ddffdd; text-align: center;'>
+                            <h2 style='color: #228B22;'>✅ No es necesaria la reunión ✅</h2>
+                            <p style='color: #006400; font-size: 18px;'>Se ha determinado que la reunión no es necesaria y que se pueden tomar decisiones sin necesidad de agendarla.</p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                st.markdown(f"**📌 Conclusiones:** {result_data['conclusions']}")
+
+                st.markdown(f"**📢 ¿Hace falta la reunión?** {'✅ Sí' if result_data['is_meeting_needed'] else '❌ No'}")
             else:
-                st.info("No hay reuniones completadas para este usuario.")
-    else:
-        st.info("Ingrese un correo y presione 'Buscar reuniones completadas'.")
+                st.error("No se pudo obtener el análisis de la reunión.")

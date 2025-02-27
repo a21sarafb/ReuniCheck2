@@ -2,6 +2,7 @@
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+import json
 
 from langchain_openai import ChatOpenAI
 from app.database.supabase_api import insert_data, select_data
@@ -100,29 +101,49 @@ def analyze_meeting(context: str, meeting_id: str):
 
     prompt = f"""
     Eres un asistente especializado en optimización de reuniones.
-    Debes analizar el tema y las respuestas para decidir si realmente se necesita o no la reunión:
+    Se te proporciona el contexto de una reunión, incluyendo su tema, preguntas y respuestas de los participantes:
     {context}
+    Tu tarea es analizar la información y decidir si la reunión es realmente necesaria. Para ello:
+    1. Indica explícitamente si la reunión es necesaria con `"is_meeting_needed": "Sí"` o `"is_meeting_needed": "No"`.
+    2. Proporciona un análisis detallado en `"conclusions"`, explicando los motivos de tu decisión.
+    3. Identifica puntos críticos o desacuerdos si existen.
+    4. Sugiere alternativas si la reunión no es necesaria.
 
-    1. Indica si la reunión es necesaria o no.
-    2. Identifica puntos críticos o desacuerdos.
-    3. Propón sugerencias para no tener una reunión innecesaria.
+    Devuelve la respuesta en **estricto formato JSON** con la siguiente estructura:
+    ```json
+    {{
+        "is_meeting_needed": "Sí" o "No",
+        "conclusions": "Explicación detallada aquí"
+    }}
     """
+
 
     response = chat.invoke(prompt)
 
-    # Definir si es necesaria
-    is_needed = ("sí" in response.content.lower() or "necesaria" in response.content.lower())
+    try:
+        # Intentar convertir la respuesta en JSON
+        response_json = json.loads(response.content)
 
-    # Guardar en DB
+        # Extraer valores del JSON
+        is_needed = response_json.get("is_meeting_needed", "No") == "Sí"  # Convertir "Sí"/"No" en True/False
+        conclusions = response_json.get("conclusions", "No se pudo generar una conclusión.")
+
+    except json.JSONDecodeError:
+        # Si hay un error en el formato JSON, asumimos que la reunión NO es necesaria
+        is_needed = False
+        conclusions = "Error en el análisis de la reunión. Intenta de nuevo."
+
+        # Guardar en DB
     result_data = {
         "id_meeting": meeting_id,
-        "conclusions": response.content,
-        "analysis": is_needed,
+        "conclusions": conclusions,  # Guardamos la conclusión exacta
+        "analysis": is_needed,  # Guardamos el booleano correcto
         "created_at": datetime.utcnow().isoformat(),
     }
     insert_data("results", result_data)
 
     return {
-        "conclusions": response.content,
+        "conclusions": conclusions,
         "analysis": is_needed
     }
+
