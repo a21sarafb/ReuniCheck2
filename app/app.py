@@ -2,12 +2,12 @@ import streamlit as st
 import requests
 import json
 
-API_BASE_URL = "http://host.docker.internal:8080"
+#API_BASE_URL = "http://host.docker.internal:8080"
 import os
 
 # Si está en Cloud Run, usa la URL pública, de lo contrario usa localhost
 #API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8080")
-
+API_BASE_URL = "http://host.docker.internal:8080"
 
 
 
@@ -59,13 +59,7 @@ with tab2:
     @st.cache_data
     def load_users():
         users_resp = requests.get(f"{API_BASE_URL}/questions/all_users")
-        print("DEBUG status code:", users_resp.status_code)
-        print("DEBUG text:", users_resp.text)  # Ver qué llega realmente
-        if users_resp.status_code == 200:
-            return users_resp.json().get("users", [])
-        else:
-            return []
-      #  return users_resp.json().get("users", []) if users_resp.status_code == 200 else []
+        return users_resp.json().get("users", []) if users_resp.status_code == 200 else []
 
     all_users = load_users()
     email_options = [u["email"] for u in all_users]
