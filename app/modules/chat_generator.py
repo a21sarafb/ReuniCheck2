@@ -1,12 +1,11 @@
 # chat_generator.py - Mejorado para conversaciones continuas y generación dinámica de preguntas
 
-from dotenv import load_dotenv
+
+from app.database.supabase_api import insert_data, select_data
 from langchain_openai import ChatOpenAI
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables import RunnableWithMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from ..config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL, OPENAI_API_KEY
-from app.database.supabase_api import insert_data, select_data
 
 
 import os
@@ -31,14 +30,26 @@ def get_session_history(session_id: str) -> ChatMessageHistory:
         session_histories[session_id] = ChatMessageHistory()
     return session_histories[session_id]
 
-# Configurar conversación con memoria
+chat = ChatOpenAI(model_name="gpt-4", temperature=0.7)
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", """Eres un asistente especializado en optimización de reuniones.
+Lee el contexto proporcionado y los turnos de conversación previos, y 
+profundiza en lo que el usuario haya respondido. Si hay contradicciones, 
+haz preguntas adicionales. Evita decir "no tengo acceso" a menos que 
+realmente falte contexto. Sigue el hilo usando la memoria."""),
+    MessagesPlaceholder(variable_name="history"),
+    ("human", "{input}"),
+])
+
+chain = prompt | chat
+
 conversation = RunnableWithMessageHistory(
     chain,
     get_session_history,
     input_messages_key="input",
     history_messages_key="history",
 )
-
 # Chatbot en consola con memoria y conversación continua
 def chatbot_with_gpt():
     print("\n🟢 Bienvenido al Chatbot de ReuniCheck con IA y memoria 🟢")

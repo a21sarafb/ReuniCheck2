@@ -5,6 +5,53 @@ from app.models.schemas import ChatRequest, ChatResponse, ChatStartRequest
 from typing import List
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
+def build_context_from_db(id_user: str, id_meeting: str) -> str:
+    """
+    Retorna un string que contiene:
+    - El tema de la reunión.
+    - Las preguntas oficiales y las respuestas que dio el usuario.
+    - (Opcional) Un breve resumen o instructivo para GPT.
+    """
+
+    # 1. Obtener el tema de la reunión
+    meeting_resp = select_data("meetings", {"id_meeting": id_meeting})
+    meeting_data = meeting_resp.data if meeting_resp and meeting_resp.data else []
+    topic = meeting_data[0]["topic"] if meeting_data else "Tema desconocido"
+
+    # 2. Obtener las preguntas
+    questions_resp = select_data("questions", {"id_meeting": id_meeting, "id_user": id_user})
+    questions_data = questions_resp.data if questions_resp and questions_resp.data else []
+
+    # 3. Obtener las respuestas
+    answers_resp = select_data("answers", {"id_meeting": id_meeting, "id_user": id_user})
+    answers_data = answers_resp.data if answers_resp and answers_resp.data else []
+
+    # Crear un mapa id_question -> [respuestas...]
+    from collections import defaultdict
+    answer_map = defaultdict(list)
+    for ans in answers_data:
+        qid = ans["id_question"]
+        # Podrías concatenar si hay múltiples respuestas para la misma pregunta
+        answer_map[qid].append(ans["content"])
+
+    # Armar un “contexto” en texto.
+    context = f"=== CONTEXTO DE LA REUNIÓN ===\nTema: {topic}\n\n"
+    for q in questions_data:
+        qid = q["id_question"]
+        context += f"Pregunta: {q['content']}\n"
+        if qid in answer_map:
+            for idx, ans_txt in enumerate(answer_map[qid], start=1):
+                context += f"   Respuesta #{idx}: {ans_txt}\n"
+        else:
+            context += "   (Sin respuesta)\n"
+        context += "\n"
+    context += (
+        "=== FIN DEL CONTEXTO ===\n\n"
+        "Basándote en este contexto, profundiza en posibles inconsistencias, mejoras, "
+        "o información adicional que el usuario podría aportar.\n"
+    )
+
+    return context
 
 @router.post("/start")
 def start_chat(request: ChatStartRequest):
@@ -36,49 +83,60 @@ def start_chat(request: ChatStartRequest):
         "id_user": id_user  #  id_user
     }
 
-@router.post("/conversation")
-def chat_with_bot(request: ChatRequest):
-    """
-    Maneja la conversación del usuario con el chatbot.
-    - Pregunta las preguntas pendientes de la reunión seleccionada.
-    - Guarda las respuestas en la base de datos.
-    - Continúa la conversación con GPT hasta que el usuario quiera finalizar.
-    """
 
+@router.post("/conversation", response_model=ChatResponse)
+
+def chat_with_bot(request: ChatRequest):
     id_user = request.id_user
     id_meeting = request.id_meeting
-
-    # Obtener preguntas pendientes
-    questions_response = select_data("questions", {"id_meeting": id_meeting, "id_user": id_user})
-
-    if not questions_response.data:
-        return {"message": "No hay preguntas asignadas a esta reunión."}
-
-    questions = [{"id_question": q["id_question"], "content": q["content"]} for q in questions_response.data]
-
-    # Iniciar conversación en memoria
+    user_message = request.user_response
     session_id = f"user_{id_user}_meeting_{id_meeting}"
-    responses = []
 
-    for q in questions:
-        responses.append({"question": q["content"], "answer": request.user_response})
+    if user_message == "INICIO_AUTOMATICO_PROFUNDIZAR":
+        # 1) Construir el contexto con las respuestas antiguas
+        context_text = build_context_from_db(id_user, id_meeting)
 
-        # Guardar respuesta en la base de datos
-        answer_data = {
-            "id_question": q["id_question"],
-            "id_user": id_user,
-            "id_meeting": id_meeting,
-            "content": request.user_response
-        }
-        insert_data("answers", answer_data)
+        # 2) Llamar a la cadena con ese contexto: GPT empezará la conversación
+        ai_response = conversation.invoke(
+            {
+                "input": f"""{context_text}
 
-    # 🔄 Conversación Continua con GPT
+El usuario ya completó las preguntas oficiales. Inicia la conversación 
+profundizando y pidiendo aclaraciones donde veas huecos o áreas de mejora.
+""",
+            },
+            config={"configurable": {"session_id": session_id}}
+        )
+
+        return ChatResponse(
+            message="Chat iniciado con contexto",
+            ai_response=ai_response.content
+        )
+
+    # ---- CASO NORMAL: el usuario está en plena conversación ---
+    #    1) Registrar la respuesta que acaba de dar en 'answers' (opcional).
+    #    2) GPT responde en base al historial (si usas la memoria).
+
+    # EJEMPLO: guardamos la respuesta del usuario (input del chat) como "answers"
+    new_answer_data = {
+        "id_question": None,  # si es diálogo libre, no asignamos question
+        "id_user": id_user,
+        "id_meeting": id_meeting,
+        "content": user_message
+    }
+    insert_data("answers", new_answer_data)
+
+    # 3) GPT: conversation
+    #    Pongamos que la “memoria” de la cadena retiene los turnos previos
+    #    (sólo si tu chat_generator.py está configurado con ChatMessageHistory).
+    #    De lo contrario, habría que inyectar el contexto en cada turno.
+
     ai_response = conversation.invoke(
-        {"input": "¿Tienes más comentarios o preguntas sobre la reunión?"},
+        {"input": user_message},
         config={"configurable": {"session_id": session_id}}
     )
 
-    # Guardar nueva pregunta en `questions`
+    # Ejemplo: guardar lo que GPT dice en la tabla `questions` (o en un log)
     new_question_data = {
         "id_meeting": id_meeting,
         "id_user": id_user,
@@ -86,19 +144,12 @@ def chat_with_bot(request: ChatRequest):
     }
     insert_data("questions", new_question_data)
 
-    # Guardar respuesta en `answers`
-    new_answer_data = {
-        "id_question": None,  # No hay pregunta previa porque es una conversación espontánea
-        "id_user": id_user,
-        "id_meeting": id_meeting,
-        "content": request.user_response
-    }
-    insert_data("answers", new_answer_data)
-
     return ChatResponse(
         message="Conversación en curso",
         ai_response=ai_response.content
     )
+
+
 @router.post("/context")
 def get_chat_context(id_user: str, id_meeting: str):
     """

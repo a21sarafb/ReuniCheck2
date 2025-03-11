@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import json
 
-API_BASE_URL = "http://host.docker.internal:8080"
+API_BASE_URL = "http://localhost:8080"
 import os
 
 # Si está en Cloud Run, usa la URL pública, de lo contrario usa localhost
@@ -26,8 +26,9 @@ st.set_page_config(page_title="ReuniCheck", page_icon="🔵", layout="wide")
 st.markdown("<h1 style='text-align: center;'>🔵 ReuniCheck - Optimización de Reuniones</h1>", unsafe_allow_html=True)
 st.markdown("---")
 
-# navegación con pestañas
-tab1, tab2, tab3, tab4 = st.tabs(["👤 Crear Usuario", "📅 Crear Reunión", "❓ Contestar Preguntas", "📊 Obtener Análisis"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["👤 Crear Usuario", "📅 Crear Reunión", "❓ Contestar Preguntas", "📊 Obtener Análisis", "🤖 Chat GPT"]
+)
 
 # =========================================================
 # 🟢 Opción 1: Crear usuario
@@ -163,31 +164,8 @@ with tab3:
                             st.write("Respuesta del servidor /answers/create:", resp.status_code, resp.text)
                     st.success("¡Respuestas guardadas!")
             else:
-                st.info("No hay preguntas pendientes. Puedes iniciar el chat con GPT.")
-                st.subheader("Chat Interactivo con GPT")
-                for msg in st.session_state.messages:
-                    with st.chat_message(msg["role"]):
-                        st.markdown(msg["content"])
-                user_input = st.chat_input("Escribe tu mensaje...")
-                if user_input:
-                    st.session_state.messages.append({"role": "user", "content": user_input})
-                    with st.chat_message("user"):
-                        st.markdown(user_input)
-                    payload = {
-                        "id_user": st.session_state.id_user,
-                        "id_meeting": st.session_state.id_meeting,
-                        "user_response": user_input
-                    }
-                    response = requests.post(f"{API_BASE_URL}/chat/conversation", json=payload)
-                    if response.status_code == 200:
-                        data = response.json()
-                        ai_msg = data["ai_response"]
-                        st.session_state.messages.append({"role": "assistant", "content": ai_msg})
-                        with st.chat_message("assistant"):
-                            st.markdown(ai_msg)
-                else:
-                    st.error("Error al interactuar con GPT. Por favor, intenta de nuevo.")
-        else:
+                    st.info("No hay preguntas pendientes.")
+    else:
             st.error("Error al obtener preguntas pendientes.")
 
 # =========================================================
@@ -274,3 +252,108 @@ with tab4:
                 st.markdown(f"**📢 ¿Hace falta la reunión?** {'✅ Sí' if result_data['is_meeting_needed'] else '❌ No'}")
             else:
                 st.error("No se pudo obtener el análisis de la reunión.")
+
+# ============================
+# 🤖 Pestaña 5: Chat GPT
+# ============================
+with tab5:
+    st.markdown("## 🤖 Profundizar con GPT")
+    st.write("Aquí puedes profundizar más sobre tus respuestas ya dadas y mejorar el análisis posterior.")
+
+    # (1) Pedir correo
+    user_email_chat = st.text_input("Correo electrónico para Chat", key="chat_email_input")
+
+    # Botón para buscar reuniones donde el usuario ya tenga respuestas
+    if st.button("Buscar reuniones con respuestas ya dadas"):
+        if not user_email_chat.strip():
+            st.warning("Por favor, ingresa un correo válido.")
+        else:
+            # 1.a) Obtener id_user llamando a /chat/start
+            resp_user = requests.post(
+                f"{API_BASE_URL}/chat/start",
+                json={"user_email": user_email_chat}
+            )
+            if resp_user.status_code == 200:
+                data_user = resp_user.json()
+                st.session_state.id_user = data_user["id_user"]
+
+                # 1.b) Llamar al endpoint que devuelve las reuniones con respuestas
+                url_meetings_responded = f"{API_BASE_URL}/answers/meetings_responded/{st.session_state.id_user}"
+                resp_meetings = requests.get(url_meetings_responded)
+
+                if resp_meetings.status_code == 200:
+                    data_meet = resp_meetings.json()
+                    meetings_responded = data_meet.get("meetings", [])
+
+                    if not meetings_responded:
+                        st.info("No tienes reuniones con respuestas todavía.")
+                        st.session_state.meeting_options_list = []
+                    else:
+                        st.session_state.meeting_options_list = [
+                            (m["id_meeting"], m["topic"]) for m in meetings_responded
+                        ]
+                        st.success(f"Se encontraron {len(meetings_responded)} reuniones. Selecciónalas abajo.")
+                else:
+                    st.error("Error al obtener reuniones con respuestas. Revisa tu backend.")
+            else:
+                st.error("No se encontró el usuario. Verifica el correo e inténtalo de nuevo.")
+
+    # 2) Seleccionar la reunión a profundizar
+    if "meeting_options_list" in st.session_state and st.session_state.meeting_options_list:
+        combo_dict = {topic: mid for (mid, topic) in st.session_state.meeting_options_list}
+        selected_topic = st.selectbox("Selecciona una reunión respondida", list(combo_dict.keys()))
+
+        if selected_topic:
+            st.session_state.id_meeting_chat = combo_dict[selected_topic]
+            st.write(f"**Reunión seleccionada:** {selected_topic}")
+
+    # 3) Iniciar Chat / Reiniciar Chat
+    if st.button("Iniciar / Reiniciar Chat"):
+        st.session_state.messages = []  # limpiamos historial
+        if st.session_state.get("id_meeting_chat"):
+            payload_init = {
+                "id_user": st.session_state.id_user,
+                "id_meeting": st.session_state.id_meeting_chat,
+                "user_response": "INICIO_AUTOMATICO_PROFUNDIZAR"
+            }
+            init_res = requests.post(f"{API_BASE_URL}/chat/conversation", json=payload_init)
+            if init_res.status_code == 200:
+                data_init = init_res.json()
+                ai_msg = data_init["ai_response"]
+                # Guardamos la respuesta de GPT en el historial
+                st.session_state.messages.append({"role": "assistant", "content": ai_msg})
+                st.success("Chat iniciado automáticamente. GPT te hará preguntas adicionales.")
+            else:
+                st.error("No se pudo iniciar el chat. Revisa tu backend /chat/conversation.")
+        else:
+            st.warning("Primero selecciona una reunión de la lista de reuniones respondidas.")
+
+    # 4) Mostrar historial de chat y permitir escribir
+    if st.session_state.get("id_meeting_chat"):
+        st.write("### Chat con GPT")
+        # Mostrar los mensajes
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        # Input para enviar mensajes
+        user_input_chat = st.chat_input("Tu mensaje...")
+        if user_input_chat:
+            st.session_state.messages.append({"role": "user", "content": user_input_chat})
+            with st.chat_message("user"):
+                st.markdown(user_input_chat)
+
+            payload_user = {
+                "id_user": st.session_state.id_user,
+                "id_meeting": st.session_state.id_meeting_chat,
+                "user_response": user_input_chat
+            }
+            resp_user_chat = requests.post(f"{API_BASE_URL}/chat/conversation", json=payload_user)
+            if resp_user_chat.status_code == 200:
+                data_ai = resp_user_chat.json()
+                ai_msg = data_ai["ai_response"]
+                st.session_state.messages.append({"role": "assistant", "content": ai_msg})
+                with st.chat_message("assistant"):
+                    st.markdown(ai_msg)
+            else:
+                st.error("No se pudo continuar la conversación. Revisa tu backend /chat/conversation.")
