@@ -2,11 +2,13 @@ import streamlit as st
 import requests
 import json
 
-API_BASE_URL = "http://localhost:8080"
+#API_BASE_URL = "http://localhost:8080"
 import os
 
 # Si está en Cloud Run, usa la URL pública, de lo contrario usa localhost
 #API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8080")
+#API_BASE_URL = "https://reunicheck2-app-48606537894.us-central1.run.app"
+API_BASE_URL = "https://reunicheck-backend-48606537894.us-central1.run.app"
 
 
 

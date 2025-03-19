@@ -23,6 +23,7 @@ ARG OPENAI_API_KEY
 
 # Expone el puerto en el que correrá FastAPI
 EXPOSE 8080
+EXPOSE 8501
 
 # Comando para ejecutar la aplicación con Uvicorn
 # CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
