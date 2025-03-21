@@ -32,10 +32,9 @@ def create_new_user(user: UserCreate):  # 📌 Se usa `UserCreate` para recibir 
     }
 @router.get("/all_users")
 def get_all_users():
-    resp = select_data("user")  # obtén todos los usuarios
-    if not resp.data:
-        return {"users": []}
-    return {"users": resp.data}  # donde cada elemento tiene "email", "id_user", etc.
+    resp = select_data("user")
+    users = resp.data if resp.data else []
+    return {"users": users}  # Siempre devolver JSON
 
 @router.post("/meetings/")
 def create_meeting(meeting: MeetingCreate):

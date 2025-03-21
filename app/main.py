@@ -13,7 +13,7 @@ app.include_router(analysis.router)
 
 @app.get("/")
 def root():
-    return {"message": "Hola Mundo"}
+    return {"message": "Hola Mundooo"}
 # CORS middleware example
 app.add_middleware(
     CORSMiddleware,
