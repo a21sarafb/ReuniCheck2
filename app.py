@@ -19,26 +19,26 @@ if "id_meeting" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-st.set_page_config(page_title="ReuniCheckActualizado", page_icon="🔵", layout="wide")
+st.set_page_config(page_title="ReuniCheck", page_icon="🔵", layout="wide")
 
-st.markdown("<h1 style='text-align: center;'>🔵 ReuniCheck - Optimización de Reuniones</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🔵 ReuniCheck - Optimización de reuniones</h1>", unsafe_allow_html=True)
 st.markdown("---")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["👤 Crear Usuario", "📅 Crear Reunión", "❓ Contestar Preguntas", "🤖 Chat GPT", "📊 Obtener Análisis"]
+    ["👤 Crear usuario", "📅 Crear reunión", "❓ Contestar preguntas", "🤖 Chat", "📊 Obtener análisis"]
 )
 
 # =========================================================
 # 🟢 Opción 1: Crear usuario
 # =========================================================
 with tab1:
-    st.markdown("## 👤 Crear Usuario")
+    st.markdown("## 👤 Crear usuario")
     st.write("Registra un nuevo usuario para participar en reuniones.")
 
     name_input = st.text_input("Nombre completo", key="name_user")
     email_input = st.text_input("Correo electrónico", key="email_user")
 
-    if st.button("Crear Usuario", use_container_width=True):
+    if st.button("Crear usuario", use_container_width=True):
         payload = {"name": name_input, "email": email_input}
         response = requests.post(f"{API_BASE_URL}/questions/users/", json=payload)
         if response.status_code == 200:
@@ -52,30 +52,21 @@ with tab1:
 # 🔵 Opción 2: Crear reunión
 # =========================================================
 with tab2:
-    st.markdown("## 📅 Crear Reunión")
-    st.write("Selecciona el tema y los participantes para generar una nueva reunión.")
+    st.markdown("## 📅 Crear reunión")
+    st.write("Escribe el tema con el que se generarán las preguntas y asígnale los participantes para generar una nueva reunión.")
 
     # Cargar lista de usuarios automáticamente
    # @st.cache_data(ttl=60)
     def load_users():
         users_resp = requests.get(f"{API_BASE_URL}/questions/all_users")
 
-        print("DEBUG status code:", users_resp.status_code)
-        print("DEBUG headers:", users_resp.headers)
-        print("DEBUG text:", repr(users_resp.text))  # Mostrar contenido exacto de la respuesta
-
         if users_resp.status_code == 200 and users_resp.text.strip():  # Asegurar que no está vacío
             try:
                 return users_resp.json().get("users", [])
             except requests.exceptions.JSONDecodeError as e:
-                print("ERROR decodificando JSON:", e)
                 return []
         else:
-            print("ERROR en la API: Código", users_resp.status_code, "Respuesta vacía")
             return []
-
-
-    #  return users_resp.json().get("users", []) if users_resp.status_code == 200 else []
 
     all_users = load_users()
     email_options = [u["email"] for u in all_users]
@@ -88,7 +79,7 @@ with tab2:
             selected_emails = st.multiselect("Participantes", options=email_options, default=[])
 
         st.markdown("---")
-        create_button = st.form_submit_button("📌 Crear Reunión")
+        create_button = st.form_submit_button("📌 Crear reunión")
 
     if create_button:
         normalized_emails = [email.strip().lower() for email in selected_emails]
@@ -108,7 +99,7 @@ with tab2:
 # ❓ Opción 3: Contestar preguntas
 # =========================================================
 with tab3:
-    st.markdown("## ❓ Contestar Preguntas")
+    st.markdown("## ❓ Contestar preguntas")
     st.write("Responde a las preguntas de una reunión en la que participas.")
 
     if st.session_state.user_email is None:
@@ -139,7 +130,7 @@ with tab3:
             st.error("⚠️ No se pudieron recuperar las reuniones.")
 
     if st.session_state.id_meeting:
-        st.subheader("Preguntas de la Reunión")
+        st.subheader("Preguntas de la reunión")
         pending_resp = requests.post(
             f"{API_BASE_URL}/questions/pending",
             json={
@@ -158,7 +149,7 @@ with tab3:
                 for question in unanswered:
                     response_key = f"resp_{question['id_question']}"
                     st.text_input(f"Pregunta: {question['content']}", key=response_key)
-                if st.button("Guardar Respuestas"):
+                if st.button("Guardar respuestas"):
                     for question in unanswered:
                         user_answer = st.session_state.get(f"resp_{question['id_question']}", "")
                         if user_answer:
@@ -168,9 +159,7 @@ with tab3:
                                 "id_meeting": st.session_state.id_meeting,
                                 "content": user_answer
                             }
-                            st.write("Enviando a /answers/create:", answer_data)
                             resp = requests.post(f"{API_BASE_URL}/answers/create", json=answer_data)
-                            st.write("Respuesta del servidor /answers/create:", resp.status_code, resp.text)
                     st.success("¡Respuestas guardadas!")
             else:
                     st.info("No hay preguntas pendientes.")
@@ -180,14 +169,14 @@ with tab3:
 # 🤖 Pestaña 4: Chat GPT
 # ============================
 with tab4:
-    st.markdown("## 🤖 Profundizar con GPT")
+    st.markdown("## 🤖 Profundiza más con GPT")
     st.write("Aquí puedes profundizar más sobre tus respuestas ya dadas y mejorar el análisis posterior.")
 
     # (1) Pedir correo
-    user_email_chat = st.text_input("Correo electrónico para Chat", key="chat_email_input")
+    user_email_chat = st.text_input("Correo electrónico", key="chat_email_input")
 
     # Botón para buscar reuniones donde el usuario ya tenga respuestas
-    if st.button("Buscar reuniones con respuestas ya dadas"):
+    if st.button("Buscar reuniones (con preguntas respondidas)"):
         if not user_email_chat.strip():
             st.warning("Por favor, ingresa un correo válido.")
         else:
@@ -224,14 +213,14 @@ with tab4:
     # 2) Seleccionar la reunión a profundizar
     if "meeting_options_list" in st.session_state and st.session_state.meeting_options_list:
         combo_dict = {topic: mid for (mid, topic) in st.session_state.meeting_options_list}
-        selected_topic = st.selectbox("Selecciona una reunión respondida", list(combo_dict.keys()))
+        selected_topic = st.selectbox("Selecciona una reunión de la lista", list(combo_dict.keys()))
 
         if selected_topic:
             st.session_state.id_meeting_chat = combo_dict[selected_topic]
             st.write(f"**Reunión seleccionada:** {selected_topic}")
 
     # 3) Iniciar Chat / Reiniciar Chat
-    if st.button("Iniciar / Reiniciar Chat"):
+    if st.button("Iniciar chat"):
         st.session_state.messages = []  # limpiamos historial
         if st.session_state.get("id_meeting_chat"):
             payload_init = {
@@ -245,15 +234,15 @@ with tab4:
                 ai_msg = data_init["ai_response"]
                 # Guardamos la respuesta de GPT en el historial
                 st.session_state.messages.append({"role": "assistant", "content": ai_msg})
-                st.success("Chat iniciado automáticamente. GPT te hará preguntas adicionales.")
+                st.success("Chat iniciado. GPT te hará preguntas adicionales.")
             else:
-                st.error("No se pudo iniciar el chat. Revisa tu backend /chat/conversation.")
+                st.error("No se pudo iniciar el chat.")
         else:
-            st.warning("Primero selecciona una reunión de la lista de reuniones respondidas.")
+            st.warning("Primero selecciona una reunión de la lista de reuniones.")
 
     # 4) Mostrar historial de chat y permitir escribir
     if st.session_state.get("id_meeting_chat"):
-        st.write("### Chat con GPT")
+        st.write("Chat")
         # Mostrar los mensajes
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
@@ -279,7 +268,7 @@ with tab4:
                 with st.chat_message("assistant"):
                     st.markdown(ai_msg)
             else:
-                st.error("No se pudo continuar la conversación. Revisa tu backend /chat/conversation.")
+                st.error("No se pudo continuar la conversación")
 
 
 
@@ -288,10 +277,10 @@ with tab4:
 # 📊 Pestaña 5: Obtener análisis
 # =========================================================
 with tab5:
-    st.markdown("## 📊 Análisis de Reuniones")
+    st.markdown("## 📊 Análisis")
     st.write("Ingresa un correo y selecciona una reunión para ver su análisis.")
 
-    user_email_analysis = st.text_input("Correo electrónico para análisis", key="email_analysis")
+    user_email_analysis = st.text_input("Correo electrónico del usuario", key="email_analysis")
 
     if st.button("🔍 Buscar reuniones completadas", use_container_width=True):
         resp = requests.post(f"{API_BASE_URL}/chat/start", json={"user_email": user_email_analysis})
