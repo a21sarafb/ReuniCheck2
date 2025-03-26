@@ -163,8 +163,6 @@ with tab3:
                     st.success("¡Respuestas guardadas!")
             else:
                     st.info("No hay preguntas pendientes.")
-    else:
-            st.error("Error al obtener preguntas pendientes.")
 # ============================
 # 🤖 Pestaña 4: Chat GPT
 # ============================
@@ -300,7 +298,7 @@ with tab5:
             ]
 
             if completed_meetings:
-                st.success(f"Se encontraron {len(completed_meetings)} reuniones completadas.")
+                st.success(f"Tiene reuniones que pueden ser analizadas.")
                 completed_topics = {c["topic"]: c["id_meeting"] for c in completed_meetings}
 
                 # Inicializar variable de sesión si no existe
@@ -322,7 +320,6 @@ with tab5:
     # Si hay una reunión seleccionada, mostrar análisis
     if "selected_meeting" in st.session_state and st.session_state.selected_meeting:
         meeting_to_analyze = st.session_state.selected_meeting
-        st.write(f"📌 **Reunión seleccionada:** {meeting_to_analyze}")
 
         if st.button("📊 Analizar reunión", use_container_width=True):
             with st.spinner("🔄 Procesando análisis, por favor espera..."):
