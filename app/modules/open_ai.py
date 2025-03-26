@@ -14,7 +14,7 @@ class GeneradorPreguntas:
             "Content-Type": "application/json"
         }
 
-    def generar_preguntas(self, tema, num_preguntas=5):
+    def generar_preguntas(self, tema, num_preguntas=2):
         """Genera una lista de preguntas relevantes basadas en el tema dado."""
         prompt = (
             f"Genera {num_preguntas} preguntas clave para evaluar el estado actual y posibles soluciones "
