@@ -40,8 +40,9 @@ class ChatRequest(BaseModel):
     user_response: str = Field(..., description="Respuesta del usuario a la pregunta")
 
 class ChatResponse(BaseModel):
-    message: str = Field(..., description="Estado de la conversación")
-    ai_response: str = Field(..., description="Respuesta generada por ChatGPT")
+    message: str = Field(..., description="Mensaje del sistema")
+    ai_response: str = Field(..., description="Respuesta de la IA")
+    debug: dict = Field(None, description="Información de diagnóstico para depuración")
 
 class AnalysisRequest(BaseModel):
     id_user: str = Field(..., description="ID del usuario que solicita el análisis")

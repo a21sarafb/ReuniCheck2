@@ -16,7 +16,7 @@ COPY . /app
 
 # Establece las variables de entorno necesarias (se pasarán en el `docker run`)
 ENV PORT=8080
-ENV API_BASE_URL=https://reunicheck-service-48606537894.us-central1.run.app
+ENV API_BASE_URL=https://reunicheck-backend-48606537894.us-central1.run.app
 ARG SUPABASE_URL
 ARG SUPABASE_SERVICE_ROLE_KEY
 ARG OPENAI_API_KEY

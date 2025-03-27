@@ -494,15 +494,57 @@ with tab3:
                             st.markdown('<div class="error-box">⚠️ No se guardaron respuestas. Asegúrate de completar al menos una.</div>', unsafe_allow_html=True)
                 else:
                     st.markdown('<div class="success-box">✅ ¡Felicidades! No hay preguntas pendientes para esta reunión.</div>', unsafe_allow_html=True)
-                    
-                    # Mostrar las preguntas ya respondidas
-                    answered_questions = [q for q in questions_list if q["answered"]]
-                    if answered_questions:
-                        with st.expander("Ver mis respuestas anteriores"):
-                            for i, question in enumerate(answered_questions):
-                                st.markdown(f"**Pregunta:** {question['content']}")
-                                st.markdown(f"*Tu respuesta:* {question['answer']}")
-                                st.markdown("---")
+                    # Mostrar las preguntas ya respondidas (opción comentada para ocultar el expander)
+                    # answered_questions = [q for q in questions_list if q["answered"]]
+                    # if answered_questions:
+                    #     with st.expander("Ver mis respuestas anteriores"):
+                    #         try:
+                    #             answers_url = f"{API_BASE_URL}/answers/user_meeting/{st.session_state.id_user}/{st.session_state.id_meeting}"
+                    #             all_answers_resp = requests.get(answers_url)
+                    #             
+                    #             st.write("🔍 Debug - Respuesta del servidor")
+                    #             st.write(f"URL consultada: {answers_url}")
+                    #             st.write(f"Status code: {all_answers_resp.status_code}")
+                    #             st.write("Headers:", all_answers_resp.headers)
+                    #             st.write("Raw response:", all_answers_resp.text)
+                    #             
+                    #             if all_answers_resp.status_code == 404:
+                    #                 # Gestión específica del 404
+                    #                 st.warning("El backend devolvió 404. Revisa la ruta o contacta al administrador.")
+                    #                 answers_dict = {}
+                    #             
+                    #             elif all_answers_resp.status_code == 200 and all_answers_resp.text.strip():
+                    #                 try:
+                    #                     all_answers_data = all_answers_resp.json()
+                    #                     st.write("Parsed JSON:", all_answers_data)
+                    #                     answers_dict = {
+                    #                         ans["id_question"]: ans["content"]
+                    #                         for ans in all_answers_data.get("answers", [])
+                    #                     }
+                    #                 except json.JSONDecodeError as e:
+                    #                     st.error(f"Error al parsear JSON: {str(e)}")
+                    #                     answers_dict = {}
+                    #             
+                    #             else:
+                    #                 # Para cualquier otro código de error (400, 500, etc.)
+                    #                 st.error(f"Error en la respuesta del servidor: {all_answers_resp.status_code}")
+                    #                 answers_dict = {}
+                    #         
+                    #         except Exception as e:
+                    #             st.error(f"Error al obtener respuestas: {str(e)}")
+                    #             answers_dict = {}
+                    #         
+                    #         # Mostrar cada pregunta con su respuesta
+                    #         for question in answered_questions:
+                    #             st.markdown(f"**Pregunta:** {question['content']}")
+                    #             q_id = question["id_question"]
+                    #             
+                    #             if q_id in answers_dict:
+                    #                 st.markdown(f"*Tu respuesta:* {answers_dict[q_id]}")
+                    #             else:
+                    #                 st.markdown("*Tu respuesta:* [No se pudo recuperar la respuesta]")
+                    #             
+                    #             st.markdown("---")
             else:
                 st.markdown('<div class="error-box">⚠️ Error al obtener las preguntas de la reunión.</div>', unsafe_allow_html=True)
 
@@ -609,6 +651,7 @@ with tab4:
                 st.markdown(user_input_chat)
             
             with st.spinner("La IA está procesando tu mensaje..."):
+                # Continuar la conversación con el chatbot
                 payload_user = {
                     "id_user": st.session_state.id_user,
                     "id_meeting": st.session_state.id_meeting_chat,
@@ -622,6 +665,22 @@ with tab4:
                 st.session_state.messages.append({"role": "assistant", "content": ai_msg})
                 with st.chat_message("assistant"):
                     st.markdown(ai_msg)
+                
+                # Mostrar información de debug si está disponible
+                if "debug" in data_ai and data_ai["debug"]:
+                    with st.expander("🐞 Información de diagnóstico (debug)"):
+                        st.json(data_ai["debug"])
+                        
+                        # Agregar un botón para obtener más información detallada
+                        if st.button("🔍 Ver análisis detallado"):
+                            with st.spinner("Obteniendo análisis detallado..."):
+                                debug_resp = requests.get(
+                                    f"{API_BASE_URL}/questions/debug/{st.session_state.id_meeting_chat}/{st.session_state.id_user}"
+                                )
+                                if debug_resp.status_code == 200:
+                                    st.json(debug_resp.json())
+                                else:
+                                    st.error("No se pudo obtener el análisis detallado")
             else:
                 st.error("No se pudo continuar la conversación")
 

@@ -122,17 +122,139 @@ def get_pending_questions(request: PendingQuestionsRequest):
 
     # Obtener todas las respuestas de la reunión
     answers_response = select_data("answers", {"id_meeting": id_meeting, "id_user": id_user})
-    answered_ids = {a["id_question"] for a in answers_response.data} if answers_response.data else set()
+    
+    # Crear un mapa de id_question -> respuesta
+    answer_map = {}
+    if answers_response.data:
+        for answer in answers_response.data:
+            if answer["id_question"]:  # Solo si la respuesta tiene id_question
+                answer_map[answer["id_question"]] = answer["content"]
+    
+    # Determinar las preguntas respondidas
+    answered_ids = set(answer_map.keys())
 
-    # Armar la lista de preguntas con su estado
+    # Armar la lista de preguntas con su estado y respuesta
     questions = []
     for q in questions_response.data:
-        is_answered = (q["id_question"] in answered_ids)
-        questions.append({
-            "id_question": q["id_question"],
+        q_id = q["id_question"]
+        is_answered = (q_id in answered_ids)
+        
+        question_data = {
+            "id_question": q_id,
             "content": q["content"],
-            "answered": is_answered
-        })
+            "answered": is_answered,
+        }
+        
+        # Incluir la respuesta si la pregunta ha sido respondida
+        if is_answered:
+            question_data["answer"] = answer_map[q_id]
+        
+        questions.append(question_data)
 
     return {"questions": questions}
+
+@router.get("/recent/{id_user}/{id_meeting}")
+def get_recent_questions(id_user: str, id_meeting: str):
+    """
+    Devuelve las preguntas más recientes de un usuario en una reunión específica,
+    ordenadas por fecha de creación (más reciente primero).
+    """
+    # Obtener todas las preguntas de la reunión para ese usuario
+    questions_response = select_data(
+        "questions", 
+        {"id_meeting": id_meeting, "id_user": id_user},
+        order_by="created_at",
+        ascending=False,
+        limit=10  # Limitamos a las 10 más recientes
+    )
+    
+    if not questions_response.data:
+        return {"questions": []}
+    
+    # Obtener respuestas para estas preguntas
+    all_question_ids = [q["id_question"] for q in questions_response.data]
+    answers_response = select_data(
+        "answers",
+        {"id_meeting": id_meeting, "id_user": id_user, "id_question": all_question_ids}
+    )
+    
+    # Crear un mapa de id_question -> respuesta
+    answered_map = {}
+    if answers_response.data:
+        for answer in answers_response.data:
+            answered_map[answer["id_question"]] = answer["content"]
+    
+    # Devolver las preguntas ordenadas con información de respuestas
+    questions = []
+    for q in questions_response.data:
+        question_id = q["id_question"]
+        questions.append({
+            "id_question": question_id,
+            "content": q["content"],
+            "created_at": q["created_at"],
+            "answered": question_id in answered_map,
+            "answer": answered_map.get(question_id, "")
+        })
+    
+    return {"questions": questions}
+
+@router.get("/debug/{id_meeting}/{id_user}")
+def debug_questions_answers(id_meeting: str, id_user: str):
+    """
+    Endpoint de diagnóstico para ver todas las preguntas y respuestas
+    de un usuario en una reunión específica.
+    """
+    # Obtener información sobre la estructura de las tablas
+    questions_resp = select_data(
+        "questions", 
+        {"id_meeting": id_meeting, "id_user": id_user},
+        order_by="created_at",
+        ascending=False
+    )
+    
+    answers_resp = select_data(
+        "answers",
+        {"id_meeting": id_meeting, "id_user": id_user},
+        order_by="created_at",
+        ascending=False
+    )
+    
+    # Analizar la estructura de las preguntas
+    question_fields = {}
+    if questions_resp.data and len(questions_resp.data) > 0:
+        question_fields = {key: type(value).__name__ for key, value in questions_resp.data[0].items()}
+    
+    # Analizar la estructura de las respuestas
+    answer_fields = {}
+    if answers_resp.data and len(answers_resp.data) > 0:
+        answer_fields = {key: type(value).__name__ for key, value in answers_resp.data[0].items()}
+    
+    # Lista de preguntas y respuestas para análisis
+    questions = []
+    for q in questions_resp.data[:5]:  # Solo las 5 más recientes para no sobrecargar
+        question_item = {
+            "id_question": q["id_question"],
+            "content": q["content"][:100] + "..." if len(q["content"]) > 100 else q["content"],
+            "created_at": q["created_at"]
+        }
+        questions.append(question_item)
+    
+    answers = []
+    for a in answers_resp.data[:5]:  # Solo las 5 más recientes
+        answer_item = {
+            "id_answer": a["id_answer"],
+            "id_question": a["id_question"],
+            "content": a["content"][:100] + "..." if len(a["content"]) > 100 else a["content"],
+            "created_at": a["created_at"]
+        }
+        answers.append(answer_item)
+    
+    return {
+        "questions_structure": question_fields,
+        "answers_structure": answer_fields,
+        "recent_questions": questions,
+        "recent_answers": answers,
+        "questions_count": len(questions_resp.data),
+        "answers_count": len(answers_resp.data)
+    }
 

@@ -53,3 +53,17 @@ def get_meetings_responded(id_user: str):
         })
 
     return {"meetings": result}
+
+@router.get("/user_meeting/{id_user}/{id_meeting}")
+def get_user_meeting_answers(id_user: str, id_meeting: str):
+    """
+    Devuelve todas las respuestas de un usuario específico para una reunión específica.
+    """
+    # Obtener todas las respuestas del usuario para la reunión dada
+    answers_resp = select_data("answers", {"id_user": id_user, "id_meeting": id_meeting})
+    if hasattr(answers_resp, "error") and answers_resp.error:
+        # Manejo de error si supabase da error
+        raise HTTPException(status_code=400, detail=str(answers_resp.error))
+
+    answers_data = answers_resp.data if answers_resp and answers_resp.data else []
+    return {"answers": answers_data}

@@ -24,13 +24,16 @@ def update_data(table: str, filters: dict, updates: dict):
         query = query.eq(key, value)
     return query.execute()
 
-def select_data(table: str, filters: dict = None, limit: int = None):
-    """Selecciona registros de una tabla de Supabase con filtros opcionales y límite de resultados."""
+def select_data(table: str, filters: dict = None, limit: int = None, order_by: str = None, ascending: bool = True):
+    """Selecciona registros de una tabla de Supabase con filtros opcionales, ordenamiento y límite de resultados."""
     query = supabase.table(table).select("*")
 
     if filters:
         for key, value in filters.items():
             query = query.eq(key, value) if not isinstance(value, list) else query.in_(key, value)
+    
+    if order_by:
+        query = query.order(order_by, ascending=ascending)
 
     if limit:
         query = query.limit(limit)

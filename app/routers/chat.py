@@ -34,7 +34,7 @@ def build_context_from_db(id_user: str, id_meeting: str) -> str:
         # Podrías concatenar si hay múltiples respuestas para la misma pregunta
         answer_map[qid].append(ans["content"])
 
-    # Armar un “contexto” en texto.
+    # Armar un "contexto" en texto.
     context = f"=== CONTEXTO DE LA REUNIÓN ===\nTema: {topic}\n\n"
     for q in questions_data:
         qid = q["id_question"]
@@ -85,13 +85,21 @@ def start_chat(request: ChatStartRequest):
 
 
 @router.post("/conversation", response_model=ChatResponse)
-
 def chat_with_bot(request: ChatRequest):
     id_user = request.id_user
     id_meeting = request.id_meeting
     user_message = request.user_response
     session_id = f"user_{id_user}_meeting_{id_meeting}"
+    
+    # Valores por defecto para la información de debug
+    debug_info = {
+        "message": "Inicio de procesamiento",
+        "recent_questions": [],
+        "answered_questions": [],
+        "selected_question": None
+    }
 
+    # Caso especial: Inicio automático
     if user_message == "INICIO_AUTOMATICO_PROFUNDIZAR":
         # 1) Construir el contexto con las respuestas antiguas
         context_text = build_context_from_db(id_user, id_meeting)
@@ -107,46 +115,131 @@ profundizando y pidiendo aclaraciones donde veas huecos o áreas de mejora.
             },
             config={"configurable": {"session_id": session_id}}
         )
+        
+        # 3) Guardar lo que GPT dice en la tabla `questions`
+        new_question_data = {
+            "id_meeting": id_meeting,
+            "id_user": id_user,
+            "content": ai_response.content
+        }
+        question_resp = insert_data("questions", new_question_data)
+        
+        # Extraer el ID de la nueva pregunta para registro en debug
+        new_question_id = None
+        if question_resp.data and len(question_resp.data) > 0:
+            new_question_id = question_resp.data[0].get("id_question")
+        
+        debug_info["message"] = "Inicio automático completado"
+        debug_info["new_question"] = {
+            "id": new_question_id,
+            "content": ai_response.content[:100] + "..." if len(ai_response.content) > 100 else ai_response.content
+        }
 
         return ChatResponse(
             message="Chat iniciado con contexto",
-            ai_response=ai_response.content
+            ai_response=ai_response.content,
+            debug=debug_info
         )
 
-    # ---- CASO NORMAL: el usuario está en plena conversación ---
-    #    1) Registrar la respuesta que acaba de dar en 'answers' (opcional).
-    #    2) GPT responde en base al historial (si usas la memoria).
-
-    # EJEMPLO: guardamos la respuesta del usuario (input del chat) como "answers"
+    # CASO NORMAL: El usuario está respondiendo en una conversación en curso
+    
+    # 1. Obtener todas las preguntas recientes para este usuario y reunión
+    questions_resp = select_data(
+        "questions", 
+        {"id_meeting": id_meeting, "id_user": id_user},
+        order_by="created_at",
+        ascending=False,
+        limit=10
+    )
+    
+    # Extraer IDs de las preguntas recientes para debug
+    recent_questions = []
+    if questions_resp.data:
+        for q in questions_resp.data[:3]:  # Solo mostramos las 3 más recientes en el debug
+            recent_questions.append({
+                "id": q.get("id_question"),
+                "content": q.get("content", "")[:50] + "..." if q.get("content") and len(q.get("content")) > 50 else q.get("content", ""),
+                "created_at": q.get("created_at")
+            })
+    debug_info["recent_questions"] = recent_questions
+    
+    # 2. Obtener las respuestas existentes
+    answers_resp = select_data(
+        "answers",
+        {"id_meeting": id_meeting, "id_user": id_user}
+    )
+    
+    # Crear un mapa de preguntas respondidas
+    answered_question_ids = {}
+    answered_questions_debug = []
+    
+    if answers_resp.data:
+        for answer in answers_resp.data:
+            q_id = answer.get("id_question")
+            if q_id:  # Solo si tiene una pregunta asociada
+                answered_question_ids[q_id] = True
+                answered_questions_debug.append({
+                    "id_question": q_id,
+                    "id_answer": answer.get("id_answer"),
+                    "content": answer.get("content", "")[:50] + "..." if answer.get("content") and len(answer.get("content")) > 50 else answer.get("content", "")
+                })
+    
+    debug_info["answered_questions"] = answered_questions_debug[:3]  # Limitamos a 3 para el debug
+    
+    # 3. Encontrar la primera pregunta sin respuesta
+    last_question_id = None
+    for question in questions_resp.data:
+        q_id = question.get("id_question")
+        if q_id and q_id not in answered_question_ids:
+            last_question_id = q_id
+            debug_info["selected_question"] = {
+                "id": q_id,
+                "content": question.get("content", "")[:100] + "..." if question.get("content") and len(question.get("content")) > 100 else question.get("content", ""),
+                "created_at": question.get("created_at")
+            }
+            break
+    
+    # Si no encontramos una pregunta sin respuesta, registramos ese hecho
+    if not last_question_id:
+        debug_info["message"] = "No se encontró ninguna pregunta sin responder"
+    else:
+        debug_info["message"] = "Se encontró una pregunta sin responder"
+    
+    # 4. Guardar la respuesta del usuario
     new_answer_data = {
-        "id_question": None,  # si es diálogo libre, no asignamos question
+        "id_question": last_question_id,  # Puede ser None si no encontramos una pregunta sin respuesta
         "id_user": id_user,
         "id_meeting": id_meeting,
         "content": user_message
     }
-    insert_data("answers", new_answer_data)
-
-    # 3) GPT: conversation
-    #    Pongamos que la “memoria” de la cadena retiene los turnos previos
-    #    (sólo si tu chat_generator.py está configurado con ChatMessageHistory).
-    #    De lo contrario, habría que inyectar el contexto en cada turno.
-
+    answer_resp = insert_data("answers", new_answer_data)
+    
+    # 5. Obtener la respuesta de la IA
     ai_response = conversation.invoke(
         {"input": user_message},
         config={"configurable": {"session_id": session_id}}
     )
-
-    # Ejemplo: guardar lo que GPT dice en la tabla `questions` (o en un log)
+    
+    # 6. Guardar la respuesta de la IA como una nueva pregunta
     new_question_data = {
         "id_meeting": id_meeting,
         "id_user": id_user,
         "content": ai_response.content
     }
-    insert_data("questions", new_question_data)
-
+    new_question_resp = insert_data("questions", new_question_data)
+    
+    # Actualizar el debug con información sobre la nueva pregunta
+    if new_question_resp.data and len(new_question_resp.data) > 0:
+        new_question_id = new_question_resp.data[0].get("id_question")
+        debug_info["new_question"] = {
+            "id": new_question_id,
+            "content": ai_response.content[:100] + "..." if len(ai_response.content) > 100 else ai_response.content
+        }
+    
     return ChatResponse(
         message="Conversación en curso",
-        ai_response=ai_response.content
+        ai_response=ai_response.content,
+        debug=debug_info
     )
 
 
